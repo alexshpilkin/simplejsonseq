@@ -60,7 +60,7 @@ class JSONSeqDecoder(JSONSeqBase):
 	Only an incremental parsing interface is provided: decodeiter() parses
 	the JSON text sequence passed as a collection of chunks.  There is no
 	explicit support for trailing unparseable data.  Subclasses can override
-	records() to change how the splitting works, or INTR (inherited from
+	items() to change how the splitting works, or INTR (inherited from
 	JSONSeqBase) to use a non-standard item introducer.
 	"""
 
@@ -74,8 +74,8 @@ class JSONSeqDecoder(JSONSeqBase):
 		"""
 		super(JSONSeqDecoder, self).__init__(jsoncls=jsoncls, **named)
 
-	def records(self, chunks):
-		"""Iterate over the records in chunks."""
+	def items(self, chunks):
+		"""Iterate over the text sequence in chunks."""
 		INTR = self.INTR
 		chunks = iter(chunks)
 		try:
@@ -83,18 +83,17 @@ class JSONSeqDecoder(JSONSeqBase):
 		except StopIteration:
 			return # Empty file
 		if not first.startswith(INTR):
-			raise IOError("JSON text sequence does not start "
-			              "with INTR")
+			raise IOError("Text sequence does not start with INTR")
 		buf = [first[len(INTR):]]
 
 		for chunk in chunks:
 			buf.append(chunk)
 			if INTR not in chunk:
 				continue
-			recs = ''.join(buf).split(INTR)
-			buf  = [recs.pop()]
-			for rec in recs:
-				yield rec
+			items = ''.join(buf).split(INTR)
+			buf   = [items.pop()]
+			for item in items:
+				yield item
 
 		yield ''.join(buf)
 
@@ -108,8 +107,8 @@ class JSONSeqDecoder(JSONSeqBase):
 		is being executed.
 		"""
 		json = self.json
-		for rec in self.records(chunks):
-			yield json.decode(rec)
+		for item in self.items(chunks):
+			yield json.decode(item)
 
 def load(fp, *, cls=JSONSeqDecoder, **named):
 	"""Load a JSON text sequence from the text file fp.
