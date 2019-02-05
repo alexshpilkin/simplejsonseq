@@ -11,7 +11,8 @@ and from file-like objects, similar to those in the json module in the standard
 library, are also provided.
 """
 
-from json import JSONDecoder, JSONEncoder
+from json     import JSONDecodeError, JSONDecoder, JSONEncoder
+from warnings import warn
 
 class JSONSeqBase(object):
 	"""Base class for JSON text sequence decoders and encoders.
@@ -29,8 +30,8 @@ class JSONSeqBase(object):
 	produced by the JSON encoder.
 
 	In decoders, this attribute should contain a single ASCII RS in order
-	to parse all standard JSON text sequences, and must in any case contain
-	a string that will not occur inside the JSON-encoded items.
+	to decode all standard JSON text sequences, and must in any case
+	contain a string that will not occur inside the JSON-encoded items.
 	"""
 
 	def __init__(self, *, json=None, jsoncls=None, **named):
@@ -49,6 +50,38 @@ class JSONSeqBase(object):
 		self.json = json
 		"""Underlying JSON decoder or encoder."""
 
+class InvalidJSONWarning(UserWarning):
+	"""Warning issued when attempting to decode or encode invalid JSON."""
+	pass
+
+class InvalidJSON(object):
+	"""Placeholder for items that are not valid JSON.
+
+	The decoder uses instances of this class to represent items that fail
+	to parse as JSON.  The encoder can recognize these and pass them
+	through to the output as is if full roundtripping is desired.  In both
+	situation an InvalidJSONWarning is issued.  JSON decoders should not
+	produce instances of this class, and JSON encoders must not attempt to
+	encode them.
+
+	The item and the JSON decoder exception are stored as attributes item
+	and exception, respectively.  When the object is encoded as an item of
+	a JSON text sequence, the value of item is written instead.
+	"""
+
+	__slots__ = ['item', 'exception']
+
+	def __init__(self, item, exception):
+		self.item = item
+		"""Item that failed to parse as JSON, as a string."""
+		assert isinstance(exception, JSONDecodeError)
+		self.exception = exception
+		"""Instance of JSONDecodeError describing the problem."""
+
+	def __repr__(self):
+		return "{}(item={!r}, exception={!r})".format(
+			type(self).__name__, self.item, self.exception)
+
 class JSONSeqDecoder(JSONSeqBase):
 	"""Decoder for JSON text sequences.
 
@@ -57,22 +90,37 @@ class JSONSeqDecoder(JSONSeqBase):
 	are decoded one at a time using a json.JSONDecoder-compatible decoder
 	stored in json, as initialized by the constructor.
 
-	Only an incremental parsing interface is provided: decodeiter() parses
-	the JSON text sequence passed as a collection of chunks.  There is no
-	explicit support for trailing unparseable data.  Subclasses can
+	Only an incremental interface is provided: decodeiter() decodes the
+	JSON text sequence passed as a collection of chunks.  There is no
+	explicit support for trailing undecodable data.  Subclasses can
 	override items() to change how the splitting works, or INTR (inherited
 	from JSONSeqBase) to use a non-standard item introducer.
 	"""
 
-	def __init__(self, *, jsoncls=JSONDecoder, **named):
+	def __init__(self, *, strict=False, jsoncls=JSONDecoder, **named):
 		"""Initialize a JSON text sequence decoder.
+
+		If strict is false (the default), self.strict will be set to
+		False, allowing any items that fail to decode as JSON to be
+		passed through to the output encapsulated in InvalidJSON values
+		and cause an InvalidJSONWarning to be issued.
 
 		If no JSON decoder is passed in json, the decoder constructor
 		specified in jsoncls (or a json.JSONDecoder by default) is
 		called to create one.  Any remaining keyword arguments are then
-		passed on to jsoncls.
+		passed on to jsoncls.  Note, however, that control characters
+		in strings can disrupt parsing of JSON text sequences, so the
+		strict argument is not passed on to jsoncls.
 		"""
 		super(JSONSeqDecoder, self).__init__(jsoncls=jsoncls, **named)
+		self.strict = bool(strict)
+		"""Whether to fail on invalid JSON.
+
+		If false, any items that fail to decode as JSON are passed
+		through to the output encapsulated in InvalidJSON values and
+		cause an InvalidJSONWarning to be issued.  This allows
+		recovering from invalid items as conforming decoders should.
+		"""
 
 	def items(self, chunks):
 		"""Iterate over the text sequence in chunks.
@@ -105,16 +153,32 @@ class JSONSeqDecoder(JSONSeqBase):
 	def decodeiter(self, chunks):
 		"""Iterate over the JSON text sequence in chunks.
 
+		If self.strict is false, any items that fail to decode as JSON
+		will be passed through to the output encapsulated in
+		InvalidJSON values and will cause an InvalidJSONWarning to be
+		issued.
+
 		Even if the iterator is stopped midway into the sequence, there
 		is no way to recover the remainder of the chunk that contains
 		the last item.  Any following chunks will be available, however.
 
-		The decoder in self.json and the introducer in self.INTR must
-		not changee while this method is active.
+		The decoder in self.json, the flag in self.strict, and the
+		introducer in self.INTR must not change while this method is
+		active.
 		"""
-		json = self.json
+		json, strict = self.json, self.strict
 		for item in self.items(chunks):
-			yield json.decode(item)
+			try:
+				jsonitem = json.decode(item)
+			except JSONDecodeError as e:
+				if strict:
+					raise
+				warn("Read invalid JSON: {!r}".format(item),
+				     InvalidJSONWarning,
+				     stacklevel=2)
+				yield InvalidJSON(item, e)
+			else:
+				yield jsonitem
 
 def load(fp, *, cls=JSONSeqDecoder, **named):
 	"""Load a JSON text sequence from the text file fp.
@@ -159,8 +223,13 @@ class JSONSeqEncoder(JSONSeqBase):
 	standard.
 	"""
 
-	def __init__(self, *, jsoncls=JSONEncoder, **named):
+	def __init__(self, *, strict=True, jsoncls=JSONEncoder, **named):
 		"""Initialize a JSON text sequence encoder.
+
+		If strict is false, self.strict is set to False, allowing any
+		invalid JSON items encapsulated in InvalidJSON values to be
+		passed through to the output and to cause InvalidJSONWarning to
+		be issued.
 
 		If no JSON encoder is passed in json, the encoder constructor
 		specified in jsoncls (or a json.JSONDecoder by default) is
@@ -168,6 +237,15 @@ class JSONSeqEncoder(JSONSeqBase):
 		passed on to jsoncls.
 		"""
 		super(JSONSeqEncoder, self).__init__(jsoncls=jsoncls, **named)
+		self.strict = bool(strict)
+		"""Whether to fail on invalid JSON.
+
+		If false, any invalid JSON items encapsulated in InvalidJSON
+		values are allowed to pass through to the output and cause an
+		InvalidJSONWarning to be issued.  This allows roundtripping
+		such items found in preexisting text sequences.  Such sequences
+		are invalid, but conforming readers should recover.
+		"""
 
 	def iterencode(self, iterable):
 		"""Iterate over chunks in the encoding of iterable.
@@ -177,16 +255,28 @@ class JSONSeqEncoder(JSONSeqBase):
 		results written in order, the result is a valid JSON text
 		sequence representing the concatenation of the arguments.
 
-		The encoder in self.json, the introducer in self.INTR and the
-		terminator in self.TERM must not change while this method is
-		active.
+		If self.strict is false, any invalid JSON items encapsulated in
+		InvalidJSON values will be passed through to the output and
+		will cause an InvalidJSONWarning to be issued.
+
+		The encoder in self.json, the flag in self.strict, the
+		introducer in self.INTR, and the terminator in self.TERM must
+		not change while this method is active.
 		"""
-		INTR, TERM, json = self.INTR, self.TERM, self.json
+		INTR, TERM, json, lax = \
+			self.INTR, self.TERM, self.json, not self.strict
 		for o in iterable:
 			yield INTR
-			for chunk in json.iterencode(o):
-				yield chunk
-			yield TERM
+			if lax and isinstance(o, InvalidJSON):
+				warn("Wrote invalid JSON: {!r}".format(o.item),
+				     InvalidJSONWarning,
+				     stacklevel=2)
+				assert INTR not in o.item
+				yield o.item
+			else:
+				for chunk in json.iterencode(o):
+					yield chunk
+				yield TERM
 
 def dump(iterable, fp, *, flush=False, cls=JSONSeqEncoder, **named):
 	"""Dump elements of iterable to fp as a JSON text sequence.
