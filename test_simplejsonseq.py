@@ -2,7 +2,7 @@ from io     import StringIO
 from json   import JSONDecodeError, JSONDecoder
 from pytest import raises, warns
 
-from simplejsonseq import InvalidJSONWarning, dump, load
+from simplejsonseq import InvalidJSON, InvalidJSONWarning, dump, load
 
 valid   = ('\x1E"spam"\n'
            '\x1Enull\n'
@@ -21,7 +21,7 @@ def test_empty_dump():
 	assert fp.getvalue() == ""
 
 def test_nonseq_load():
-	with raises(IOError, match="Text sequence does not start with "):
+	with raises(ValueError, match="Text sequence does not start with "):
 		list(load(StringIO('{"not-a": "jsonseq"}')))
 
 def test_chunked_load():
@@ -80,6 +80,15 @@ def test_invalid_load_dump_lax():
 		dump(load(StringIO(invalid), strict=False), fp, strict=False)
 	assert len(warnings) == 4
 	assert fp.getvalue() == invalid
+
+def test_truncated_load():
+	with warns(InvalidJSONWarning) as warnings:
+		items = list(load(StringIO('\x1Etrue')))
+	assert len(warnings) == 1
+	assert (len(items) == 1 and
+	        isinstance(items[0], InvalidJSON) and
+	        items[0].item == 'true' and
+	        items[0].exception.msg == "Truncated")
 
 class CustomError(RuntimeError):
 	pass
