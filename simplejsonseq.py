@@ -82,10 +82,10 @@ class JSONSeqDecoder(JSONSeqBase):
 			first = next(chunks)
 		except StopIteration:
 			return # Empty file
-		if first[0] != INTR:
+		if not first.startswith(INTR):
 			raise IOError("JSON text sequence does not start "
 			              "with INTR")
-		buf = [first[1:]]
+		buf = [first[len(INTR):]]
 
 		for chunk in chunks:
 			buf.append(chunk)
