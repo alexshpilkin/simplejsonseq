@@ -163,8 +163,8 @@ class JSONSeqDecoder(JSONSeqBase):
 		Returns an iterable over the JSON text sequence items in chunks,
 		where each item is a JSON-encoded value preceded by the
 		introducer self.INTR and followed by at least one whitespace
-		character if it is undelimited (i.e. not an object, a list, or
-		a string).  The standard specifies a value of ASCII RS (^^,
+		character if it not self-delimiting (i.e. not an object, a list,
+		or a string).  The standard specifies a value of ASCII RS (^^,
 		U+1E) for the introducer and recommends that every item be
 		terminated by an ASCII LF (^J, U+0A).
 
@@ -201,18 +201,18 @@ class JSONSeqDecoder(JSONSeqBase):
 			else:
 				yield jsonitem
 
-def load(fp, *, cls=JSONSeqDecoder, **named):
-	"""Load a JSON text sequence from the text file fp.
+def load(file, *, cls=JSONSeqDecoder, **named):
+	"""Load a JSON text sequence from the text file file.
 
-	Returns an iterable over the items in fp.  It can only be iterated over
-	once and consumes the file completely.
+	Returns an iterable over the items in file.  It can only be iterated
+	over once and consumes the file completely.
 
 	The decoder constructor specified by cls (or JSONSeqDecoder by default)
 	is called to create a decoder.  Any remaining keyword arguments are
 	passed on to cls.
 	"""
 	# Chunking by line breaks seems like a good default
-	return cls(**named).decodeiter(fp)
+	return cls(**named).decodeiter(file)
 
 class JSONSeqEncoder(JSONSeqBase):
 	"""Encoder for JSON text sequences.
@@ -294,34 +294,69 @@ class JSONSeqEncoder(JSONSeqBase):
 		"""
 		INTR, TERM, json, lax = \
 			self.INTR, self.TERM, self.json, not self.strict
-		for o in iterable:
+		for e in iterable:
 			yield INTR
-			if lax and isinstance(o, InvalidJSON):
-				warn("Wrote invalid JSON: {!r}".format(o.item),
+			if lax and isinstance(e, InvalidJSON):
+				warn("Wrote invalid JSON: {!r}".format(e.item),
 				     InvalidJSONWarning,
 				     stacklevel=2)
-				assert INTR not in o.item
-				yield o.item
+				assert INTR not in e.item
+				yield e.item
 			else:
-				for chunk in json.iterencode(o):
+				for chunk in json.iterencode(e):
 					yield chunk
 				yield TERM
 
-def dump(iterable, fp, *, flush=False, cls=JSONSeqEncoder, **named):
-	"""Dump elements of iterable to fp as a JSON text sequence.
+class JSONSeqWriter(object):
+	def __init__(self,
+	             file,
+	             *,
+	             buffered=True,
+	             jsonseq=None,
+	             jsonseqcls=JSONSeqEncoder,
+	             **named):
 
-	If flush is set to True, fp is flushed after each item is written.
+		self.file = file
+		"""Underlying file-like object."""
+		self.buffered = buffered
+		"""Whether to buffer items before writing."""
 
-	The decoder constructor specified by cls (or JSONSeqDecoder by default)
-	is called to create an encoder.  Any remaining keyword arguments are
-	passed on to cls.
+		if jsonseq is not None and named:
+			raise ValueError("Both jsonseq and construction "
+			                 "arguments specified")
+		if jsonseq is None:
+			jsonseq = jsonseqcls(**named)
+		self.jsonseq = jsonseq
+		"""Underlying JSON text sequence encoder."""
+
+	def flush(self):
+		self.file.flush()
+
+	def _writechunks(self, chunks):
+		file = self.file
+		for chunk in chunks:
+			file.write(chunk)
+
+	def write(self, *items, **named):
+		self.dump(items, **named)
+
+	def dump(self, iterable, *, flush=False):
+		if self.buffered:
+			self._writechunks(self.jsonseq.iterencode(iterable))
+			if flush: self.flush()
+		else:
+			flushit     = self.flush
+			writechunks = self._writechunks
+			iterencode  = self.jsonseq.iterencode
+			for e in iterable:
+				writechunks(iterencode([e]))
+				flushit()
+
+def dump(iterable, file, *, cls=JSONSeqWriter, **named):
+	"""Dump elements of iterable to file as a JSON text sequence.
+
+	The writer constructor specified by cls (or JSONSeqWriter by default)
+	is called to create a writer object.  Any remaining keyword arguments
+	are passed on to cls.
 	"""
-	encoder = cls(**named)
-	INTR = encoder.INTR
-	for chunk in encoder.iterencode(iterable):
-		if flush and chunk.startswith(INTR):
-			fp.flush()
-		assert chunk.startswith(INTR) or INTR not in chunk
-		fp.write(chunk)
-	if flush:
-		fp.flush()
+	cls(file=file, **named).dump(iterable, flush=True)

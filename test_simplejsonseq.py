@@ -2,7 +2,7 @@ from io     import StringIO
 from json   import JSONDecodeError, JSONDecoder
 from pytest import raises, warns
 
-from simplejsonseq import InvalidJSON, InvalidJSONWarning, dump, load
+from simplejsonseq import *
 
 valid   = ('\x1E"spam"\n'
            '\x1Enull\n'
@@ -28,17 +28,29 @@ def test_chunked_load():
 	items = list(load(['\x1E"ex-', 'parrot"\n']))
 	assert items == ["ex-parrot"]
 
-def test_valid_load_dump():
-	fp = StringIO()
-	dump(load(StringIO(valid)), fp)
-	assert fp.getvalue() == valid
-
-def test_valid_load_dump_flush(mocker):
+def test_valid_load_dump(mocker):
 	fp = StringIO()
 	mocker.spy(fp, 'flush')
-	dump(load(StringIO(valid)), fp, flush=True)
-	# There is a spurious flush before the first element
-	assert fp.flush.call_count == 4
+	dump(load(StringIO(valid)), fp)
+	assert fp.flush.call_count == 1
+	assert fp.getvalue() == valid
+
+def test_valid_load_dump_unbuffered(mocker):
+	fp = StringIO()
+	mocker.spy(fp, 'flush')
+	dump(load(StringIO(valid)), fp, buffered=False)
+	assert fp.flush.call_count == 3
+	assert fp.getvalue() == valid
+
+def test_load_write(mocker):
+	fp = StringIO()
+	mocker.spy(fp, 'flush')
+	items  = load(StringIO(valid))
+	writer = JSONSeqWriter(fp)
+	writer.write(*items)
+	assert fp.flush.call_count == 0
+	writer.flush()
+	assert fp.flush.call_count == 1
 	assert fp.getvalue() == valid
 
 def test_invalid_load_default():
@@ -115,3 +127,10 @@ def test_load_json_jsoncls():
 		list(load(StringIO(valid),
 		          json=CustomJSONDecoder(),
 		          parse_int=None))
+
+def test_write_jsonseq_jsonseqcls():
+	with raises(ValueError,
+	            match="Both jsonseq and construction arguments specified"):
+		JSONSeqWriter(StringIO(),
+		              jsonseq=JSONSeqDecoder(),
+		              json=CustomJSONDecoder())
