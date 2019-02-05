@@ -28,9 +28,9 @@ class JSONSeqBase(object):
 	sequence, and must in any case contain a string that will not be
 	produced by the JSON encoder.
 
-	In decoders, this attribute should contain a single ASCII RS in order to
-	parse all standard JSON text sequences, and must in any case contain a
-	string that will not occur inside the JSON-encoded items.
+	In decoders, this attribute should contain a single ASCII RS in order
+	to parse all standard JSON text sequences, and must in any case contain
+	a string that will not occur inside the JSON-encoded items.
 	"""
 
 	def __init__(self, *, json=None, jsoncls=None, **named):
@@ -59,9 +59,9 @@ class JSONSeqDecoder(JSONSeqBase):
 
 	Only an incremental parsing interface is provided: decodeiter() parses
 	the JSON text sequence passed as a collection of chunks.  There is no
-	explicit support for trailing unparseable data.  Subclasses can override
-	items() to change how the splitting works, or INTR (inherited from
-	JSONSeqBase) to use a non-standard item introducer.
+	explicit support for trailing unparseable data.  Subclasses can
+	override items() to change how the splitting works, or INTR (inherited
+	from JSONSeqBase) to use a non-standard item introducer.
 	"""
 
 	def __init__(self, *, jsoncls=JSONDecoder, **named):
