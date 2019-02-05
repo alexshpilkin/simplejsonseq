@@ -1,6 +1,8 @@
+.coverage
 __pycache__
 build
 dist
+*,cover
 *.egg-info
 *.pyc
 *.pyo

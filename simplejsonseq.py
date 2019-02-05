@@ -79,8 +79,9 @@ class InvalidJSON(object):
 		"""Instance of JSONDecodeError describing the problem."""
 
 	def __repr__(self):
-		return "{}(item={!r}, exception={!r})".format(
-			type(self).__name__, self.item, self.exception)
+		return "{}({!r}, {!r})".format(type(self).__name__,
+		                               self.item,
+		                               self.exception)
 
 class JSONSeqDecoder(JSONSeqBase):
 	"""Decoder for JSON text sequences.
