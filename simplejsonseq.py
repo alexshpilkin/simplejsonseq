@@ -75,7 +75,12 @@ class JSONSeqDecoder(JSONSeqBase):
 		super(JSONSeqDecoder, self).__init__(jsoncls=jsoncls, **named)
 
 	def items(self, chunks):
-		"""Iterate over the text sequence in chunks."""
+		"""Iterate over the text sequence in chunks.
+
+		Even if the iterator is stopped midway into the sequence, there
+		is no way to recover the remainder of the chunk that contains
+		the last item.  Any following chunks will be available, however.
+		"""
 		INTR = self.INTR
 		chunks = iter(chunks)
 		try:
@@ -101,10 +106,11 @@ class JSONSeqDecoder(JSONSeqBase):
 		"""Iterate over the JSON text sequence in chunks.
 
 		Even if the iterator is stopped midway into the sequence, there
-		is no way to recover the remaining input.  FIXME
+		is no way to recover the remainder of the chunk that contains
+		the last item.  Any following chunks will be available, however.
 
-		The decoder in self.json must not be changed while this method
-		is being executed.
+		The decoder in self.json and the introducer in self.INTR must
+		not changee while this method is active.
 		"""
 		json = self.json
 		for item in self.items(chunks):
@@ -128,13 +134,13 @@ class JSONSeqEncoder(JSONSeqBase):
 
 	Encodes JSON text sequences, i.e. sequences of JSON items with each
 	item introduced by an ASCII RS character (^^, U+1E).  By convention,
-	each item is also followed by an ASCII LF (^J, U+0A).  Objects are
+	each item is also followed by an ASCII LF (^J, U+0A).  JSON items are
 	encoded in order using a json.JSONEncoder-compatible encoder stored in
 	json, as initialized by the constructor.
 
 	Only an incremental interface is provided: iterencode() returns an
-	iterable of chunks that encode a sequence of objects.  Subclasses can
-	override TERM to use a non-recommended item terminator, or INTR
+	iterable of chunks that encode the elements of an iterable.  Subclasses
+	can override TERM to use a non-recommended item terminator, or INTR
 	(inherited from JSONSeqBase) to use a non-standard item introducer.
 
 	Encoding a JSON text sequence distributes over concatenation, so it is
@@ -170,6 +176,10 @@ class JSONSeqEncoder(JSONSeqBase):
 		Therefore, if this method is called several times and the
 		results written in order, the result is a valid JSON text
 		sequence representing the concatenation of the arguments.
+
+		The encoder in self.json, the introducer in self.INTR and the
+		terminator in self.TERM must not change while this method is
+		active.
 		"""
 		INTR, TERM, json = self.INTR, self.TERM, self.json
 		for o in iterable:
@@ -179,7 +189,7 @@ class JSONSeqEncoder(JSONSeqBase):
 			yield TERM
 
 def dump(iterable, fp, *, flush=False, cls=JSONSeqEncoder, **named):
-	"""Dump objects in iterable to fp as a JSON text sequence.
+	"""Dump elements of iterable to fp as a JSON text sequence.
 
 	If flush is set to True, fp is flushed after each item is written.
 
