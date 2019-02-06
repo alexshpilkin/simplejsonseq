@@ -308,6 +308,23 @@ class JSONSeqEncoder(JSONSeqBase):
 				yield TERM
 
 class JSONSeqWriter(object):
+	"""Writer for JSON text sequences.
+
+	Represents a JSON text sequence file open for writing, wrapping a
+	text fileself.file, with buffering setting self.buffered.  Uses the
+	JSON text sequence encoder in self.jsonseq.  Items may be written
+	either one by one using the write() method, or in batches using the
+	dump() method.  The flush() method flushes items that were buffered
+	because self.buffered was set.  When finished, the writer should be
+	closed using close(); this closes the underlying file as well.
+
+	A file can only be wrapped into a JSONSeqWriter once, and no data
+	should be written to it afterwards except through the writer.  (This
+	means that the concatenation properties of JSON text sequences as
+	described in the documentation of JSONSeqEncoder are considered opaque
+	to users of JSONSeqWriter.)
+	"""
+
 	def __init__(self,
 	             file,
 	             *,
@@ -315,10 +332,19 @@ class JSONSeqWriter(object):
 	             jsonseq=None,
 	             jsonseqcls=JSONSeqEncoder,
 	             **named):
+		"""Initialize a JSON text sequence writer.
 
+		Wraps the text file file into a JSON text sequence writer,
+		saving the underlying text file into self.file.  Sets
+		self.buffered according to buffered.  If no JSON text sequence
+		encoder is passed in jsonseq, the encoder constructor specified
+		in jsonseqcls (or JSONSeqEncoder by default) is called to
+		create one.  Any remaining keyword arguments are then passed on
+		to jsonseqcls.
+		"""
 		self.file = file
-		"""Underlying file-like object."""
-		self.buffered = buffered
+		"""Underlying text file object."""
+		self.buffered = bool(buffered)
 		"""Whether to buffer items before writing."""
 
 		if jsonseq is not None and named:
@@ -330,17 +356,44 @@ class JSONSeqWriter(object):
 		"""Underlying JSON text sequence encoder."""
 
 	def flush(self):
+		"""Flush buffered items.
+
+		Flushes the buffer of the underlying text file.  Has no effect
+		if self.buffered is false.
+		"""
 		self.file.flush()
 
+	def close(self):
+		"""Close the underlying file."""
+		self.file.close()
+
 	def _writechunks(self, chunks):
+		"""Write chunks out to the underlying text file."""
 		file = self.file
 		for chunk in chunks:
 			file.write(chunk)
 
-	def write(self, *items, **named):
-		self.dump(items, **named)
+	def write(self, *args, **named):
+		"""Encode and write args out to the underlying text file.
+
+		Equivalent to self.dump(*args, **named).
+		"""
+		self.dump(args, **named)
 
 	def dump(self, iterable, *, flush=False):
+		"""Encode and write iterable out to the underlying text file.
+
+		Values can be either written all at once by passing them in a
+		single iterable or in several batches by calling dump() several
+		times.  The end result is equivalent modulo buffering issues.
+
+		If flush is true, flushes the buffer after writing all of the
+		items.  If self.buffered is true, the buffer is flushed after
+		writing each item and flush has no effect.
+
+		The encoder in self.jsonseq and the flag in self.buffered must
+		not change while this method is active.
+		"""
 		if self.buffered:
 			self._writechunks(self.jsonseq.iterencode(iterable))
 			if flush: self.flush()
