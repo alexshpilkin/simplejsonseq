@@ -27,7 +27,7 @@ class CustomTest(Test):
 
 setup(
 	name='simplejsonseq',
-	version='0.1.0',
+	version='0.2.0',
 	author='Alexander Shpilkin',
 	author_email='ashpilkin@gmail.com',
 	description='Encoder and decoder for JSON text sequences',
@@ -35,7 +35,7 @@ setup(
 	long_description_content_type='text/x-rst',
 	url='https://github.com/alexshpilkin/simplejsonseq',
 	classifiers=[
-		'Development Status :: 3 - Alpha',
+		'Development Status :: 4 - Beta',
 		'Intended Audience :: Developers',
 		'License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication',
 		'Operating System :: OS Independent',
