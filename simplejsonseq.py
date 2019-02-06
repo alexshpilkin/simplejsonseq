@@ -1,6 +1,6 @@
 from __future__ import unicode_literals
 
-"""Simple codec for JSON text sequences.
+"""Encoder and decoder for JSON text sequences.
 
 A JSON text sequence as specified in RFC 7464 to be a sequence of valid JSON
 items with each item introduced by a single ASCII RS (^^, U+1E).  This module

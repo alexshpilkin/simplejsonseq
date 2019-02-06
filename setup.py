@@ -30,7 +30,7 @@ setup(
 	version='0.1.0',
 	author='Alexander Shpilkin',
 	author_email='ashpilkin@gmail.com',
-	description='Simple encoder/decoder for JSON text sequences',
+	description='Encoder and decoder for JSON text sequences',
 	long_description=readme,
 	long_description_content_type='text/x-rst',
 	url='https://github.com/alexshpilkin/simplejsonseq',
