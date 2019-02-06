@@ -1,5 +1,5 @@
 from io     import StringIO
-from json   import JSONDecodeError, JSONDecoder
+from json   import JSONDecodeError, JSONDecoder, JSONEncoder
 from pytest import raises, warns
 
 from simplejsonseq import *
@@ -12,30 +12,57 @@ invalid = ('\x1E"spam"\n'
            '\x1Etrue\n'
            '\x1E{"parrot":\n')
 
-def test_empty_load():
+def test_load_empty():
 	assert list(load(StringIO(""))) == []
 
-def test_empty_dump():
+def test_dump_empty():
 	fp = StringIO()
 	dump([], fp)
 	assert fp.getvalue() == ""
 
-def test_nonseq_load():
+def test_load_nonseq():
 	with raises(ValueError, match="Text sequence does not start with "):
 		list(load(StringIO('{"not-a": "jsonseq"}')))
 
-def test_chunked_load():
+def test_load_chunked():
 	items = list(load(['\x1E"ex-', 'parrot"\n']))
 	assert items == ["ex-parrot"]
 
-def test_valid_load_dump(mocker):
+def test_load_close(mocker):
+	fp = StringIO(valid)
+	mocker.spy(fp, 'close')
+	reader = JSONSeqReader(fp)
+	assert len(list(reader)) == 3
+	assert fp.close.call_count == 0
+	reader.close()
+	assert fp.close.call_count == 1
+
+def test_load_with(mocker):
+	fp = StringIO(valid)
+	mocker.spy(fp, 'close')
+	with JSONSeqReader(fp) as reader:
+		assert len(list(reader)) == 3
+		assert fp.close.call_count == 0
+	assert fp.close.call_count == 1
+
+def test_load_with_raise(mocker):
+	fp = StringIO(valid)
+	mocker.spy(fp, 'close')
+	with raises(RuntimeError, match="Success"):
+		with JSONSeqReader(fp) as reader:
+			assert len(list(reader)) == 3
+			assert fp.close.call_count == 0
+			raise RuntimeError("Success")
+	assert fp.close.call_count == 1
+
+def test_load_dump(mocker):
 	fp = StringIO()
 	mocker.spy(fp, 'flush')
 	dump(load(StringIO(valid)), fp)
 	assert fp.flush.call_count == 1
 	assert fp.getvalue() == valid
 
-def test_valid_load_dump_unbuffered(mocker):
+def test_load_dump_unbuffered(mocker):
 	fp = StringIO()
 	mocker.spy(fp, 'flush')
 	dump(load(StringIO(valid)), fp, buffered=False)
@@ -53,18 +80,48 @@ def test_load_write(mocker):
 	assert fp.flush.call_count == 1
 	assert fp.getvalue() == valid
 
-def test_invalid_load_default():
+def test_load_dump_close(mocker):
+	fp = StringIO()
+	mocker.spy(fp, 'close')
+	writer = JSONSeqWriter(fp)
+	writer.dump(load(StringIO(valid)))
+	assert fp.close.call_count == 0
+	assert fp.getvalue() == valid
+	writer.close()
+	assert fp.close.call_count == 1
+
+def test_load_dump_with(mocker):
+	fp = StringIO()
+	mocker.spy(fp, 'close')
+	with JSONSeqWriter(fp) as writer:
+		writer.dump(load(StringIO(valid)))
+		assert fp.close.call_count == 0
+		assert fp.getvalue() == valid
+	assert fp.close.call_count == 1
+
+def test_load_dump_with_raise(mocker):
+	fp = StringIO()
+	mocker.spy(fp, 'close')
+	with raises(RuntimeError, match="Success"):
+		with JSONSeqWriter(fp) as writer:
+			writer.dump(load(StringIO(valid)))
+			assert fp.close.call_count == 0
+			assert fp.getvalue() == valid
+			raise RuntimeError("Success")
+	assert fp.close.call_count == 1
+
+def test_load_invalid_default():
 	with warns(InvalidJSONWarning) as warnings:
 		items = list(load(StringIO(invalid)))
 	assert len(warnings) == 2
 	assert repr(items[1]).startswith("InvalidJSON('killer: bunny\\n', "
 	                                 "JSONDecodeError")
 
-def test_invalid_load_strict():
+def test_load_invalid_strict():
 	with raises(JSONDecodeError):
 		list(load(StringIO(invalid), strict=True))
 
-def test_invalid_load_dump_default():
+def test_load_dump_invalid_default():
 	with warns(InvalidJSONWarning) as warnings:
 		items = list(load(StringIO(invalid)))
 	assert len(warnings) == 2
@@ -75,7 +132,7 @@ def test_invalid_load_dump_default():
 	                  "serializable"):
 		dump(items, fp)
 
-def test_invalid_load_dump_strict():
+def test_load_dump_invalid_strict():
 	with warns(InvalidJSONWarning) as warnings:
 		items = list(load(StringIO(invalid), strict=False))
 	assert len(warnings) == 2
@@ -86,14 +143,14 @@ def test_invalid_load_dump_strict():
 	                  "serializable"):
 		dump(items, fp, strict=True)
 
-def test_invalid_load_dump_lax():
+def test_load_dump_invalid_lax():
 	fp = StringIO()
 	with warns(InvalidJSONWarning) as warnings:
 		dump(load(StringIO(invalid), strict=False), fp, strict=False)
 	assert len(warnings) == 4
 	assert fp.getvalue() == invalid
 
-def test_truncated_load():
+def test_load_truncated():
 	with warns(InvalidJSONWarning) as warnings:
 		items = list(load(StringIO('\x1Etrue')))
 	assert len(warnings) == 1
@@ -128,9 +185,16 @@ def test_load_json_jsoncls():
 		          json=CustomJSONDecoder(),
 		          parse_int=None))
 
-def test_write_jsonseq_jsonseqcls():
+def test_load_jsonseq_jsonseqcls():
+	with raises(ValueError,
+	            match="Both jsonseq and construction arguments specified"):
+		list(load(StringIO(valid),
+		          jsonseq=JSONSeqDecoder(),
+		          json=JSONDecoder()))
+
+def test_dump_jsonseq_jsonseqcls():
 	with raises(ValueError,
 	            match="Both jsonseq and construction arguments specified"):
 		JSONSeqWriter(StringIO(),
-		              jsonseq=JSONSeqDecoder(),
-		              json=CustomJSONDecoder())
+		              jsonseq=JSONSeqEncoder(),
+		              json=JSONEncoder())

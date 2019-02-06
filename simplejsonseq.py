@@ -4,17 +4,18 @@ from __future__ import unicode_literals
 
 A JSON text sequence as specified in RFC 7464 to be a sequence of valid JSON
 items with each item introduced by a single ASCII RS (^^, U+1E).  This module
-provides a decoder and an encoder with incremental APIs in JSONSeqDecoder and
-JSONSeqEncoder.  Common functionality is encapsulated in JSONSeqBase.
-Convenience functions load and dump to read and write JSON text sequences to
-and from file-like objects, similar to those in the json module in the standard
-library, are also provided.
+provides incremental decoders and encoders in JSONSeqDecoder and JSONSeqEncoder,
+and incremental readers and writers in JSONSeqReader and JSONSeqWriter.  If it
+is only necessary to read or write a file once in one batch, convenience
+functions load and dump, similar to those in the json module, can be used
+instead.
 """
 
-from json     import JSONDecodeError, JSONDecoder, JSONEncoder
-from warnings import warn
+from contextlib import AbstractContextManager
+from json       import JSONDecodeError, JSONDecoder, JSONEncoder
+from warnings   import warn
 
-class JSONSeqBase(object):
+class JSONSeqCodec(object):
 	"""Base class for JSON text sequence decoders and encoders.
 
 	Defines the common constructor interface that initializes json as well
@@ -50,6 +51,49 @@ class JSONSeqBase(object):
 		self.json = json
 		"""Underlying JSON decoder or encoder."""
 
+class JSONSeqFile(AbstractContextManager):
+	"""Base class for JSON text sequence readers and writers.
+
+	Defines the common constructor interface that initializes file and
+	jsonseq, the close() method, and the context manager methods.
+	"""
+	def __init__(self, file, *, jsonseq=None, jsonseqcls=None, **named):
+		"""Initialize a JSON text sequence reader or writer.
+
+		The underlying text file, to be stored in self.file, is
+		specified by file.
+
+		If jsonseq is passed, it is stored in self.jsonseq, and no
+		additional arguments are permitted.  Otherwise, jsonseqcls is
+		called to initialize self.jsonseq.  Any remaining keyword
+		arguments are then passed on to jsonseqcls.
+		"""
+		self.file = file
+		"""Underlying text file."""
+		self._context = None
+		"""Underlying context manager."""
+
+		if jsonseq is not None and named:
+			raise ValueError("Both jsonseq and construction "
+			                 "arguments specified")
+		if jsonseq is None:
+			jsonseq = jsonseqcls(**named)
+		self.jsonseq = jsonseq
+		"""Underlying JSON text sequence decoder or encoder."""
+
+	def __enter__(self):
+		assert self._context is None
+		self._context = self.file.__enter__()
+		return self
+
+	def __exit__(self, exc_type, exc_val, exc_tb):
+		# Don't clear self._context to ensure we don't __enter__ twice.
+		return self._context.__exit__(exc_type, exc_val, exc_tb)
+
+	def close(self):
+		"""Close the underlying text file."""
+		self.file.close()
+
 class InvalidJSONWarning(UserWarning):
 	"""Warning issued when attempting to decode or encode invalid JSON."""
 	pass
@@ -83,7 +127,7 @@ class InvalidJSON(object):
 		                               self.item,
 		                               self.exception)
 
-class JSONSeqDecoder(JSONSeqBase):
+class JSONSeqDecoder(JSONSeqCodec):
 	"""Decoder for JSON text sequences.
 
 	Decodes JSON text sequences, i.e. sequences of JSON items with each
@@ -95,7 +139,7 @@ class JSONSeqDecoder(JSONSeqBase):
 	JSON text sequence passed as a collection of chunks.  There is no
 	explicit support for trailing undecodable data.  Subclasses can
 	override items() to change how the splitting works, or INTR (inherited
-	from JSONSeqBase) to use a non-standard item introducer.
+	from JSONSeqCodec) to use a non-standard item introducer.
 	"""
 
 	def __init__(self, *, strict=False, jsoncls=JSONDecoder, **named):
@@ -168,7 +212,7 @@ class JSONSeqDecoder(JSONSeqBase):
 		U+1E) for the introducer and recommends that every item be
 		terminated by an ASCII LF (^J, U+0A).
 
-		Even if the iterator is stopped midway into the sequence, there
+		Even if iteration is stopped midway into the sequence, there
 		is no way to recover the remainder of the chunk that contains
 		the last item.  Any following chunks will be available, however.
 
@@ -201,20 +245,53 @@ class JSONSeqDecoder(JSONSeqBase):
 			else:
 				yield jsonitem
 
-def load(file, *, cls=JSONSeqDecoder, **named):
-	"""Load a JSON text sequence from the text file file.
+class JSONSeqReader(JSONSeqFile):
+	"""Reader for JSON text sequences.
+
+	Represents a JSON text sequence file open for reading, wrapping a text
+	file file.  Uses the JSON text sequence decoder in jsonseq.
+
+	Instead of closing the reader explicitly, one can also use it as a
+	context manager in a 'with' statement, like a regular file.  The reader
+	and its underlying file will then be closed once the code block guarded
+	by the 'with' statement finishes either normally or abnormally.
+
+	A file can only be wrapped into a JSONSeqReader and iterated over once.
+	Even if the iteration is stopped midway into the sequence, there is no
+	guarantee any following data in the file can be recovered.
+	"""
+	def __init__(self, file, *, jsonseqcls=JSONSeqDecoder, **named):
+		"""Initialize a JSON text sequence reader.
+
+		Wraps the text file file into a JSON text sequence reader,
+		saving the underlying text file into self.file.  If no JSON
+		text sequence decoder is passed in jsonseq, the decoder
+		constructor specified in jsonseqcls (or JSONSeqdecoder by
+		default) is called to create one.  Any remaining keyword
+		arguments are then passed on to jsonseqcls.
+		"""
+		super(JSONSeqReader, self).__init__(file=file,
+		                                    jsonseqcls=jsonseqcls,
+		                                    **named)
+
+	def __iter__(self):
+		"""Iterate over the decoded items in the file."""
+		# Chunking by line breaks seems like a good default.
+		return iter(self.jsonseq.decodeiter(self.file))
+
+def load(file, *, cls=JSONSeqReader, **named):
+	"""Load a JSON text sequence from file.
 
 	Returns an iterable over the items in file.  It can only be iterated
 	over once and consumes the file completely.
 
-	The decoder constructor specified by cls (or JSONSeqDecoder by default)
-	is called to create a decoder.  Any remaining keyword arguments are
+	The reader constructor specified by cls (or JSONSeqReader by default)
+	is called to create a reader.  Any remaining keyword arguments are
 	passed on to cls.
 	"""
-	# Chunking by line breaks seems like a good default
-	return cls(**named).decodeiter(file)
+	return cls(file=file, **named)
 
-class JSONSeqEncoder(JSONSeqBase):
+class JSONSeqEncoder(JSONSeqCodec):
 	"""Encoder for JSON text sequences.
 
 	Encodes JSON text sequences, i.e. sequences of JSON items with each
@@ -226,7 +303,7 @@ class JSONSeqEncoder(JSONSeqBase):
 	Only an incremental interface is provided: iterencode() returns an
 	iterable of chunks that encode the elements of an iterable.  Subclasses
 	can override TERM to use a non-recommended item terminator, or INTR
-	(inherited from JSONSeqBase) to use a non-standard item introducer.
+	(inherited from JSONSeqCodec) to use a non-standard item introducer.
 
 	Encoding a JSON text sequence distributes over concatenation, so it is
 	valid to call iterencode() several times and write the results in order.
@@ -307,7 +384,7 @@ class JSONSeqEncoder(JSONSeqBase):
 					yield chunk
 				yield TERM
 
-class JSONSeqWriter(object):
+class JSONSeqWriter(JSONSeqFile):
 	"""Writer for JSON text sequences.
 
 	Represents a JSON text sequence file open for writing, wrapping a
@@ -317,6 +394,11 @@ class JSONSeqWriter(object):
 	dump() method.  The flush() method flushes items that were buffered
 	because self.buffered was set.  When finished, the writer should be
 	closed using close(); this closes the underlying file as well.
+
+	Instead of closing the writer explicitly, one can also use it as a
+	context manager in a 'with' statement, like a regular file.  The writer
+	and its underlying file will then be closed once the code block guarded
+	by the 'with' statement finishes either normally or abnormally.
 
 	A file can only be wrapped into a JSONSeqWriter once, and no data
 	should be written to it afterwards except through the writer.  (This
@@ -329,7 +411,6 @@ class JSONSeqWriter(object):
 	             file,
 	             *,
 	             buffered=True,
-	             jsonseq=None,
 	             jsonseqcls=JSONSeqEncoder,
 	             **named):
 		"""Initialize a JSON text sequence writer.
@@ -342,18 +423,11 @@ class JSONSeqWriter(object):
 		create one.  Any remaining keyword arguments are then passed on
 		to jsonseqcls.
 		"""
-		self.file = file
-		"""Underlying text file object."""
+		super(JSONSeqWriter, self).__init__(file=file,
+		                                    jsonseqcls=jsonseqcls,
+		                                    **named)
 		self.buffered = bool(buffered)
 		"""Whether to buffer items before writing."""
-
-		if jsonseq is not None and named:
-			raise ValueError("Both jsonseq and construction "
-			                 "arguments specified")
-		if jsonseq is None:
-			jsonseq = jsonseqcls(**named)
-		self.jsonseq = jsonseq
-		"""Underlying JSON text sequence encoder."""
 
 	def flush(self):
 		"""Flush buffered items.
@@ -363,10 +437,6 @@ class JSONSeqWriter(object):
 		"""
 		self.file.flush()
 
-	def close(self):
-		"""Close the underlying file."""
-		self.file.close()
-
 	def _writechunks(self, chunks):
 		"""Write chunks out to the underlying text file."""
 		file = self.file
@@ -374,14 +444,14 @@ class JSONSeqWriter(object):
 			file.write(chunk)
 
 	def write(self, *args, **named):
-		"""Encode and write args out to the underlying text file.
+		"""Encode args and append them to the file.
 
 		Equivalent to self.dump(*args, **named).
 		"""
 		self.dump(args, **named)
 
 	def dump(self, iterable, *, flush=False):
-		"""Encode and write iterable out to the underlying text file.
+		"""Encode elements of iterable and append them to the file.
 
 		Values can be either written all at once by passing them in a
 		single iterable or in several batches by calling dump() several
