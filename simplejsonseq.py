@@ -1,12 +1,12 @@
 """Encoder and decoder for JSON text sequences.
 
-A JSON text sequence as specified in RFC 7464 to be a sequence of valid JSON
-items with each item introduced by a single ASCII RS (^^, U+1E).  This module
-provides incremental decoders and encoders in JSONSeqDecoder and JSONSeqEncoder,
-and incremental readers and writers in JSONSeqReader and JSONSeqWriter.  If it
-is only necessary to read or write a file once in one batch, convenience
-functions load and dump, similar to those in the json module, can be used
-instead.
+A JSON text sequence as specified in RFC 7464 to be a sequence of valid
+JSON items with each item introduced by a single ASCII RS (^^, U+1E).
+This module provides incremental decoders and encoders in JSONSeqDecoder
+and JSONSeqEncoder, and incremental readers and writers in JSONSeqReader
+and JSONSeqWriter.  If it is only necessary to read or write a file once
+in one batch, convenience functions load and dump, similar to those in
+the json module, can be used instead.
 """
 
 from json     import JSONDecoder, JSONEncoder
@@ -141,7 +141,7 @@ class JSONSeqDecoder(JSONSeqCodec):
 	Only an incremental interface is provided: decodeiter() decodes the
 	JSON text sequence passed as a collection of chunks.  There is no
 	explicit support for trailing undecodable data.  Subclasses can
-	override items() to change how the splitting works, or INTR (inherited
+	override items() to change how the splitting works or INTR (inherited
 	from JSONSeqCodec) to use a non-standard item introducer.
 	"""
 
@@ -305,7 +305,7 @@ class JSONSeqEncoder(JSONSeqCodec):
 
 	Only an incremental interface is provided: iterencode() returns an
 	iterable of chunks that encode the elements of an iterable.  Subclasses
-	can override TERM to use a non-recommended item terminator, or INTR
+	can override TERM to use a non-recommended item terminator or INTR
 	(inherited from JSONSeqCodec) to use a non-standard item introducer.
 
 	Encoding a JSON text sequence distributes over concatenation, so it is
@@ -334,7 +334,7 @@ class JSONSeqEncoder(JSONSeqCodec):
 		issued.
 
 		If no JSON encoder is passed in json, the encoder constructor
-		specified in jsoncls (or a json.JSONDecoder by default) is
+		specified in jsoncls (or a json.JSONEncoder by default) is
 		called to create one.  Any remaining keyword arguments are then
 		passed on to jsoncls.
 		"""
@@ -393,7 +393,7 @@ class JSONSeqWriter(JSONSeqFile):
 	Represents a JSON text sequence file open for writing, wrapping a
 	text fileself.file, with buffering setting self.buffered.  Uses the
 	JSON text sequence encoder in self.jsonseq.  Items may be written
-	either one by one using the write() method, or in batches using the
+	either one by one using the write() method or in batches using the
 	dump() method.  The flush() method flushes items that were buffered
 	because self.buffered was set.  When finished, the writer should be
 	closed using close(); this closes the underlying file as well.
