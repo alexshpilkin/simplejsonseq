@@ -28,7 +28,7 @@ class CustomTest(Test):
 
 setup(
 	name='simplejsonseq',
-	version='0.2.0',
+	version='0.2.1',
 	author='Alexander Shpilkin',
 	author_email='ashpilkin@gmail.com',
 	description='Encoder and decoder for JSON text sequences',
