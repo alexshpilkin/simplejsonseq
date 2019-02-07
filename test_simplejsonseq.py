@@ -1,12 +1,32 @@
-from io     import StringIO
-from json   import JSONDecodeError, JSONDecoder, JSONEncoder
+# On Python < 3, mind the single spurious PytestWarning:
+# <https://github.com/pytest-dev/pytest/issues/4014>
+
+from json   import JSONDecoder, JSONEncoder
 from pytest import raises, warns
+
+try:
+	# For Python < 3; need the pure-Python version in order to subclass it
+	from StringIO import StringIO as _StringIO
+except ImportError:
+	from io import StringIO
+else:
+	class StringIO(_StringIO):
+		def __enter__(self):
+			return self
+		def __exit__(self, exc_val, exc_type, exc_tb):
+			self.close()
+
+try:
+	from json import JSONDecodeError as _JSONDecodeError
+except ImportError:
+	# For Python < 3.5
+	_JSONDecodeError = ValueError
 
 from simplejsonseq import *
 
 valid   = ('\x1E"spam"\n'
            '\x1Enull\n'
-           '\x1E{"holy": "grenade", "pin": 1}\n')
+           '\x1E["holy", "grenade"]\n')
 invalid = ('\x1E"spam"\n'
            '\x1Ekiller: bunny\n'
            '\x1Etrue\n'
@@ -114,11 +134,10 @@ def test_load_invalid_default():
 	with warns(InvalidJSONWarning) as warnings:
 		items = list(load(StringIO(invalid)))
 	assert len(warnings) == 2
-	assert repr(items[1]).startswith("InvalidJSON('killer: bunny\\n', "
-	                                 "JSONDecodeError")
+	assert repr(items[1]).startswith("InvalidJSON")
 
 def test_load_invalid_strict():
-	with raises(JSONDecodeError):
+	with raises(_JSONDecodeError):
 		list(load(StringIO(invalid), strict=True))
 
 def test_load_dump_invalid_default():
@@ -128,8 +147,7 @@ def test_load_dump_invalid_default():
 
 	fp = StringIO()
 	with raises(TypeError,
-	            match="Object of type InvalidJSON is not JSON "
-	                  "serializable"):
+	            match=".*InvalidJSON.* is not JSON serializable"):
 		dump(items, fp)
 
 def test_load_dump_invalid_strict():
@@ -139,8 +157,7 @@ def test_load_dump_invalid_strict():
 
 	fp = StringIO()
 	with raises(TypeError,
-	            match="Object of type InvalidJSON is not JSON "
-	                  "serializable"):
+	            match=".*InvalidJSON.* is not JSON serializable"):
 		dump(items, fp, strict=True)
 
 def test_load_dump_invalid_lax():
@@ -157,7 +174,7 @@ def test_load_truncated():
 	assert (len(items) == 1 and
 	        isinstance(items[0], InvalidJSON) and
 	        items[0].item == 'true' and
-	        items[0].exception.msg == "Truncated")
+	        "Truncated" in repr(items[0].exception))
 
 class CustomError(RuntimeError):
 	pass

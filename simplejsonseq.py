@@ -1,5 +1,3 @@
-from __future__ import unicode_literals
-
 """Encoder and decoder for JSON text sequences.
 
 A JSON text sequence as specified in RFC 7464 to be a sequence of valid JSON
@@ -11,9 +9,14 @@ functions load and dump, similar to those in the json module, can be used
 instead.
 """
 
-from contextlib import AbstractContextManager
-from json       import JSONDecodeError, JSONDecoder, JSONEncoder
-from warnings   import warn
+from json     import JSONDecoder, JSONEncoder
+from warnings import warn
+
+try:
+	from json import JSONDecodeError as _JSONDecodeError
+except ImportError:  # pragma: no cover
+	# For Python < 3.5
+	_JSONDecodeError = ValueError
 
 class JSONSeqCodec(object):
 	"""Base class for JSON text sequence decoders and encoders.
@@ -35,7 +38,7 @@ class JSONSeqCodec(object):
 	contain a string that will not occur inside the JSON-encoded items.
 	"""
 
-	def __init__(self, *, json=None, jsoncls=None, **named):
+	def __init__(self, json=None, jsoncls=None, **named):
 		"""Initialize a JSON text sequence decoder or encoder.
 
 		If json is passed, it is stored in self.json, and no additional
@@ -51,13 +54,13 @@ class JSONSeqCodec(object):
 		self.json = json
 		"""Underlying JSON decoder or encoder."""
 
-class JSONSeqFile(AbstractContextManager):
+class JSONSeqFile(object):
 	"""Base class for JSON text sequence readers and writers.
 
 	Defines the common constructor interface that initializes file and
 	jsonseq, the close() method, and the context manager methods.
 	"""
-	def __init__(self, file, *, jsonseq=None, jsonseqcls=None, **named):
+	def __init__(self, file, jsonseq=None, jsonseqcls=None, **named):
 		"""Initialize a JSON text sequence reader or writer.
 
 		The underlying text file, to be stored in self.file, is
@@ -118,9 +121,9 @@ class InvalidJSON(object):
 	def __init__(self, item, exception):
 		self.item = item
 		"""Item that failed to parse as JSON, as a string."""
-		assert isinstance(exception, JSONDecodeError)
+		assert isinstance(exception, _JSONDecodeError)
 		self.exception = exception
-		"""Instance of JSONDecodeError describing the problem."""
+		"""Exception object describing the problem."""
 
 	def __repr__(self):
 		return "{}({!r}, {!r})".format(type(self).__name__,
@@ -142,7 +145,7 @@ class JSONSeqDecoder(JSONSeqCodec):
 	from JSONSeqCodec) to use a non-standard item introducer.
 	"""
 
-	def __init__(self, *, strict=False, jsoncls=JSONDecoder, **named):
+	def __init__(self, strict=False, jsoncls=JSONDecoder, **named):
 		"""Initialize a JSON text sequence decoder.
 
 		If strict is false (the default), self.strict will be set to
@@ -232,10 +235,10 @@ class JSONSeqDecoder(JSONSeqCodec):
 				# whitespace is ASCII
 				if (item.lstrip()[0] not in '{["' and
 				    not item[-1].isspace()):
-					raise JSONDecodeError("Truncated",
-					                      item,
-					                      len(item))
-			except JSONDecodeError as e:
+					raise _JSONDecodeError("Truncated",
+					                       item,
+					                       len(item))
+			except _JSONDecodeError as e:
 				if strict:
 					raise
 				warn("Read invalid JSON: {!r}".format(item),
@@ -260,7 +263,7 @@ class JSONSeqReader(JSONSeqFile):
 	Even if the iteration is stopped midway into the sequence, there is no
 	guarantee any following data in the file can be recovered.
 	"""
-	def __init__(self, file, *, jsonseqcls=JSONSeqDecoder, **named):
+	def __init__(self, file, jsonseqcls=JSONSeqDecoder, **named):
 		"""Initialize a JSON text sequence reader.
 
 		Wraps the text file file into a JSON text sequence reader,
@@ -279,7 +282,7 @@ class JSONSeqReader(JSONSeqFile):
 		# Chunking by line breaks seems like a good default.
 		return iter(self.jsonseq.decodeiter(self.file))
 
-def load(file, *, cls=JSONSeqReader, **named):
+def load(file, cls=JSONSeqReader, **named):
 	"""Load a JSON text sequence from file.
 
 	Returns an iterable over the items in file.  It can only be iterated
@@ -322,7 +325,7 @@ class JSONSeqEncoder(JSONSeqCodec):
 	standard.
 	"""
 
-	def __init__(self, *, strict=True, jsoncls=JSONEncoder, **named):
+	def __init__(self, strict=True, jsoncls=JSONEncoder, **named):
 		"""Initialize a JSON text sequence encoder.
 
 		If strict is false, self.strict is set to False, allowing any
@@ -409,7 +412,6 @@ class JSONSeqWriter(JSONSeqFile):
 
 	def __init__(self,
 	             file,
-	             *,
 	             buffered=True,
 	             jsonseqcls=JSONSeqEncoder,
 	             **named):
@@ -450,7 +452,7 @@ class JSONSeqWriter(JSONSeqFile):
 		"""
 		self.dump(args, **named)
 
-	def dump(self, iterable, *, flush=False):
+	def dump(self, iterable, flush=False):
 		"""Encode elements of iterable and append them to the file.
 
 		Values can be either written all at once by passing them in a
@@ -475,7 +477,7 @@ class JSONSeqWriter(JSONSeqFile):
 				writechunks(iterencode([e]))
 				flushit()
 
-def dump(iterable, file, *, cls=JSONSeqWriter, **named):
+def dump(iterable, file, cls=JSONSeqWriter, **named):
 	"""Dump elements of iterable to file as a JSON text sequence.
 
 	The writer constructor specified by cls (or JSONSeqWriter by default)

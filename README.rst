@@ -10,7 +10,7 @@ followed by a line feed (^J, U+0A).
 To convert a file to an iterable or to write out an iterable into a file,
 use the ``dump()`` and ``load()`` functions, similar to the json module:
 
->>> import io, simplejsonseq
+>>> import io, simplejsonseq  # In Python < 3, use cStringIO not io
 >>> s = io.StringIO()
 >>> simplejsonseq.dump(['hello', 'world'], s)
 >>> s.getvalue()
@@ -42,7 +42,7 @@ By default, the reader accepts unparseable items and wraps them into
 and ``JSONSeqWriter`` to tune this behaviour, but bear in mind that the
 RFC recommends recovering from invalid input items:
 
->>> import io, simplejsonseq
+>>> import io, simplejsonseq  # In Python < 3, use cStringIO not io
 >>> value = '\x1e{"parrot":\n'
 >>> items = list(simplejsonseq.load(value))
 __main__:1: InvalidJSONWarning: Read invalid JSON: '{"parrot":\n'

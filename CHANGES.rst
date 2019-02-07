@@ -1,6 +1,13 @@
 Changes
 =======
 
+Unreleased
+----------
+
+Code changes
+~~~~~~~~~~~~
+* Support older Python versions, starting with 2.7 and 3.4.
+
 0.2.0 (2019-02-06)
 ------------------
 
