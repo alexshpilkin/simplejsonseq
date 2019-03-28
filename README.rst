@@ -1,3 +1,5 @@
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Falexshpilkin%2Fsimplejsonseq.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Falexshpilkin%2Fsimplejsonseq?ref=badge_shield)
+
 Encoder and decoder for JSON text sequences
 ===========================================
 
@@ -101,3 +103,7 @@ True
 Detailed documentation is available in the docstrings.
 
 .. _RFC 7464: https://tools.ietf.org/html/rfc7464
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Falexshpilkin%2Fsimplejsonseq.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Falexshpilkin%2Fsimplejsonseq?ref=badge_large)
